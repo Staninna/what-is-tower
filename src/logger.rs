@@ -1,3 +1,6 @@
+// TODO: Include status code in log (https://youtu.be/16sU1q8OeeI?t=7038)
+// TODO: But first comment everything again so i know i understand it
+
 use futures::future::{ready, BoxFuture, Map, Ready};
 use futures::{Future, TryFutureExt};
 use hyper::service::make_service_fn;
