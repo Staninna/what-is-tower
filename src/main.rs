@@ -70,16 +70,6 @@ impl Service<Request<Body>> for HelloWorld {
 
     // Respond to aqual request
     fn call(&mut self, _req: Request<Body>) -> Self::Future {
-        // Wait a few seconds
-        let mut idx = 0_u64;
-        loop {
-            if idx == 25000000000 {
-                break;
-            } else {
-                idx += 1
-            }
-        }
-
         // Ready future
         // Construct an Ready future
         ready(Ok(Response::new(Body::from("Hello, World!"))))
