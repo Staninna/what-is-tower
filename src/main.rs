@@ -1,9 +1,11 @@
 #![allow(dead_code, warnings, unused_imports, unused_variables)]
-use futures::future::{ready, BoxFuture, Ready};
+use futures::future::{ready, BoxFuture, Map, Ready};
+use futures::{Future, TryFutureExt};
 use hyper::service::make_service_fn;
-use hyper::{Body, Request, Response, Server};
+use hyper::{Body, Method, Request, Response, Server};
 use std::convert::Infallible;
 use std::net::SocketAddr;
+use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Instant;
 use tower::Service;
@@ -107,7 +109,10 @@ where
 
     // BoxeFuture
     // Boxed future is an future that is boxed this comes with an performance cost but is more flexible
-    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
+    // type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
+
+    // Custom/Own future
+    type Future = LoggingFuture<S::Future>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
@@ -118,27 +123,82 @@ where
         let method = req.method().to_owned();
         let path = req.uri().path().to_string();
 
-        // Clone inner
-        let mut inner = self.inner.clone();
+        // Log the request
+        log::info!("request  {} {}", method, path);
 
-        Box::pin(async move {
-            // Log the reqest
-            log::info!("request  {} {}", method, path);
+        // Starts an timer to time request
+        let start = Instant::now();
 
-            // Starts an timer to time request
-            let start = Instant::now();
+        // Create fututre
+        let future = self.inner.call(req);
 
-            // Get an response
-            let res = inner.call(req).await;
+        LoggingFuture {
+            future,
+            start,
+            method,
+            path,
+        }
 
-            // Log the response
-            let time_spend = start.elapsed();
-            log::info!("response {} {} time={:?}", method, path, time_spend);
+        // // Clone inner
+        // let mut inner = self.inner.clone();
 
-            // Return the response
-            res
-        })
+        // Box::pin(async move {
+        //     // Log the reqest
+        //     log::info!("request  {} {}", method, path);
+
+        //     // Starts an timer to time request
+        //     let start = Instant::now();
+
+        //     // Get an response
+        //     let res = inner.call(req).await;
+
+        //     // Log the response
+        //     let time_spend = start.elapsed();
+        //     log::info!("response {} {} time={:?}", method, path, time_spend);
+
+        //     // Return the response
+        //     res
+        // })
     }
 }
 
-// TODO: https://youtu.be/16sU1q8OeeI?t=2906
+#[pin_project::pin_project] // Impl this when building an future wrapping an other future
+struct LoggingFuture<F> {
+    #[pin] // Pin the wrapped future
+    future: F,
+
+    // For logging purposes
+    start: Instant,
+    method: Method,
+    path: String,
+}
+
+// F == Wrapped Future
+impl<F> Future for LoggingFuture<F>
+where
+    F: Future,
+{
+    type Output = F::Output; // Doesnt mutate so outputs the same
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.project();
+
+        let result = match this.future.poll(cx) {
+            Poll::Ready(response) => response,
+            Poll::Pending => return Poll::Pending,
+        };
+
+        // Get time spend
+        let spend_time = this.start.elapsed();
+
+        // Log response
+        log::info!(
+            "response {} {} time={:?}",
+            this.method,
+            this.path,
+            spend_time
+        );
+
+        Poll::Ready(result)
+    }
+}
