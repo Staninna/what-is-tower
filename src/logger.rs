@@ -1,11 +1,12 @@
-use std::{
-    pin::Pin,
-    task::{Context, Poll},
-    time::Instant,
-};
-
-use futures::Future;
-use hyper::{Method, Request};
+use futures::future::{ready, BoxFuture, Map, Ready};
+use futures::{Future, TryFutureExt};
+use hyper::service::make_service_fn;
+use hyper::{Body, Method, Request, Response, Server};
+use std::convert::Infallible;
+use std::net::SocketAddr;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use std::time::Instant;
 use tower::Service;
 
 // Simple struct that looks at the request and response and logs them
